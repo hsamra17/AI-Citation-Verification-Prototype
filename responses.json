@@ -1,1 +1,50 @@
-[]
+{
+  "dataset_note": "All examples, source titles, domains, and URLs are simulated teaching material, not real publications or working sources. The .test domains are reserved for testing.",
+  "examples": [
+    {
+      "id": "example_1",
+      "question": "Does regular exercise improve sleep quality?",
+      "simulated_answer": "Regular exercise can improve sleep quality in many adults.",
+      "citations": [
+        {
+          "citation_id": "citation_1",
+          "source_title": "Simulated teaching source: Physical activity and adult sleep",
+          "website_domain": "sleep-evidence.test",
+          "source_url": "https://sleep-evidence.test/illustrative/physical-activity-and-sleep",
+          "evidence_preview": "Regular physical activity is associated with improved sleep quality in adults."
+        }
+      ],
+      "expected_evidence_classification": "supported"
+    },
+    {
+      "id": "example_2",
+      "question": "Does caffeine permanently improve memory?",
+      "simulated_answer": "Caffeine permanently improves memory in all adults.",
+      "citations": [
+        {
+          "citation_id": "citation_2",
+          "source_title": "Simulated teaching source: Caffeine, alertness, and memory",
+          "website_domain": "caffeine-evidence.test",
+          "source_url": "https://caffeine-evidence.test/illustrative/caffeine-and-memory",
+          "evidence_preview": "Caffeine may temporarily improve alertness and attention, but this does not establish permanent memory improvement."
+        }
+      ],
+      "expected_evidence_classification": "unsupported"
+    },
+    {
+      "id": "example_3",
+      "question": "Do houseplants improve indoor air quality?",
+      "simulated_answer": "Houseplants significantly improve indoor air quality in most homes.",
+      "citations": [
+        {
+          "citation_id": "citation_3",
+          "source_title": "Simulated teaching source: Houseplants and indoor air quality",
+          "website_domain": "indoor-air-evidence.test",
+          "source_url": "https://indoor-air-evidence.test/illustrative/houseplants-and-indoor-air",
+          "evidence_preview": "Laboratory studies suggest that some plants can absorb pollutants, but their effectiveness in typical homes remains uncertain."
+        }
+      ],
+      "expected_evidence_classification": "insufficient"
+    }
+  ]
+}
