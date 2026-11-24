@@ -18,20 +18,62 @@ def normalize_question_text(question):
 
 
 def process_question(question):
-    """Find a prepared question and return its simulated answer."""
+    """Find a prepared question and clear any citation from the previous result."""
     if not question or not question.strip():
-        return "Please enter a question."
+        return (
+            "Please enter a question.",
+            "",
+            None,
+            "",
+            gr.update(visible=False),
+        )
 
     normalized_user_question = normalize_question_text(question)
     for example in prepared_examples:
         normalized_prepared_question = normalize_question_text(example["question"])
         if normalized_user_question == normalized_prepared_question:
-            return example["simulated_answer"]
+            selected_citation = example["citations"][0]
+            citation_summary = (
+                "**Simulated teaching citation:** "
+                f"{selected_citation['source_title']} "
+                f"(`{selected_citation['website_domain']}`)"
+            )
+            return (
+                example["simulated_answer"],
+                citation_summary,
+                selected_citation,
+                "",
+                gr.update(visible=False),
+            )
 
     return (
         "That question is not recognised yet. Please try one of the three "
-        "example questions listed above."
+        "example questions listed above.",
+        "",
+        None,
+        "",
+        gr.update(visible=False),
     )
+
+
+def inspect_citation(selected_citation):
+    """Show the selected citation's simulated source details and evidence."""
+    if not selected_citation:
+        return "", gr.update(visible=False)
+
+    evidence_details = (
+        "### Evidence preview\n\n"
+        "**Simulated teaching material; not a live source.**\n\n"
+        f"**Source title:** {selected_citation['source_title']}\n\n"
+        f"**Website domain:** `{selected_citation['website_domain']}`\n\n"
+        f"**Evidence preview:** {selected_citation['evidence_preview']}"
+    )
+    return evidence_details, gr.update(visible=True)
+
+
+def hide_evidence_preview():
+    """Hide and clear the evidence preview while keeping the citation selectable."""
+    return "", gr.update(visible=False)
 
 
 # Create the page layout and add the project introduction.
@@ -52,31 +94,61 @@ with gr.Blocks(title="AI Citation Verification Prototype") as demo:
     )
     gr.Markdown(f"**Available example questions:**\n\n{example_question_list}")
 
-    # Provide an input area for questions and a button to submit them.
-    question_input = gr.Textbox(
-        label="Your question",
-        placeholder="Type a question...",
-        lines=2,
-    )
-    submit_button = gr.Button("Submit Question", variant="primary")
+    # Keep the selected citation private to the current user's Gradio session.
+    selected_citation_state = gr.State(value=None)
 
-    # Keep the response area read-only for displaying prepared answers and messages.
-    response_output = gr.Textbox(
-        label="Simulated AI response",
-        lines=8,
-        interactive=False,
-    )
+    # Place question entry and its response beside the citation evidence panel.
+    with gr.Row():
+        with gr.Column(scale=1):
+            question_input = gr.Textbox(
+                label="Your question",
+                placeholder="Type a question...",
+                lines=2,
+            )
+            submit_button = gr.Button("Submit Question", variant="primary")
 
-    # Let users submit with either the button or Enter in the question box.
+            # Keep the response area read-only and show its citation alongside it.
+            response_output = gr.Textbox(
+                label="Simulated AI response",
+                lines=8,
+                interactive=False,
+            )
+            citation_output = gr.Markdown()
+            inspect_citation_button = gr.Button("Inspect Citation")
+
+        with gr.Column(scale=1):
+            with gr.Column(visible=False) as evidence_panel:
+                evidence_output = gr.Markdown()
+                hide_evidence_button = gr.Button("Hide Evidence")
+
+    # The button and Enter key use the same function and clear stale evidence.
+    question_outputs = [
+        response_output,
+        citation_output,
+        selected_citation_state,
+        evidence_output,
+        evidence_panel,
+    ]
     submit_button.click(
         fn=process_question,
         inputs=question_input,
-        outputs=response_output,
+        outputs=question_outputs,
     )
     question_input.submit(
         fn=process_question,
         inputs=question_input,
-        outputs=response_output,
+        outputs=question_outputs,
+    )
+
+    # Inspect the current citation or hide its evidence without losing the selection.
+    inspect_citation_button.click(
+        fn=inspect_citation,
+        inputs=selected_citation_state,
+        outputs=[evidence_output, evidence_panel],
+    )
+    hide_evidence_button.click(
+        fn=hide_evidence_preview,
+        outputs=[evidence_output, evidence_panel],
     )
 
 
