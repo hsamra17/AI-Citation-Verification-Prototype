@@ -1,0 +1,16 @@
+# Python virtual environments
+.venv/
+venv/
+
+# Python cache files
+__pycache__/
+*.py[cod]
+
+# Environment variables and local settings
+.env
+.env.*
+excluded_sites.json
+
+# Temporary error files
+error.txt
+error_*.txt
