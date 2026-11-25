@@ -107,6 +107,14 @@ def normalize_question_text(question):
     return " ".join(question.split()).casefold().rstrip(" ?")
 
 
+def format_feedback_message(feedback_choice):
+    """Make the saved feedback choice easy to identify in the interface."""
+    return (
+        f"**Selected feedback: {feedback_choice}**\n\n"
+        f"{feedback_messages[feedback_choice]}"
+    )
+
+
 def is_valid_selected_citation(selected_citation, current_question=None):
     """Confirm state refers to a real, eligible citation for the current question."""
     if (
@@ -274,7 +282,11 @@ def inspect_citation(selected_citation, feedback_records, current_question):
     )
     citation_id = selected_citation["citation_id"]
     previous_choice = (feedback_records or {}).get(citation_id)
-    previous_feedback_message = feedback_messages.get(previous_choice, "")
+    previous_feedback_message = (
+        format_feedback_message(previous_choice)
+        if previous_choice in feedback_messages
+        else ""
+    )
     return evidence_details, previous_feedback_message, gr.update(visible=True)
 
 
@@ -308,7 +320,7 @@ def save_feedback(
             "it is factually unreliable."
         )
         return (
-            feedback_messages[feedback_choice],
+            format_feedback_message(feedback_choice),
             updated_feedback_records,
             exclusion_prompt,
             gr.update(visible=True),
@@ -317,7 +329,7 @@ def save_feedback(
         )
 
     return (
-        feedback_messages[feedback_choice],
+        format_feedback_message(feedback_choice),
         updated_feedback_records,
         "",
         gr.update(visible=False),
@@ -397,9 +409,16 @@ def refresh_question_after_exclusion(question, status_message):
             choices=excluded_site_domains,
             value=None,
             interactive=can_restore_websites(),
+            visible=can_restore_websites(),
         ),
-        gr.update(interactive=can_restore_websites()),
-        gr.update(interactive=can_restore_websites()),
+        gr.update(
+            interactive=can_restore_websites(),
+            visible=can_restore_websites(),
+        ),
+        gr.update(
+            interactive=can_restore_websites(),
+            visible=can_restore_websites(),
+        ),
         gr.update(visible=False),
     )
 
@@ -468,11 +487,12 @@ def restore_selected_website(selected_domain):
                 choices=excluded_site_domains,
                 value=selected_domain,
                 interactive=False,
+                visible=False,
             ),
             "The saved exclusions could not be read, so no website was restored.",
             gr.update(visible=False),
-            gr.update(interactive=False),
-            gr.update(interactive=False),
+            gr.update(interactive=False, visible=False),
+            gr.update(interactive=False, visible=False),
         )
 
     if not selected_domain:
@@ -482,11 +502,18 @@ def restore_selected_website(selected_domain):
                 choices=excluded_site_domains,
                 value=None,
                 interactive=can_restore_websites(),
+                visible=can_restore_websites(),
             ),
             "Select an excluded website to restore.",
             gr.update(visible=False),
-            gr.update(interactive=can_restore_websites()),
-            gr.update(interactive=can_restore_websites()),
+            gr.update(
+                interactive=can_restore_websites(),
+                visible=can_restore_websites(),
+            ),
+            gr.update(
+                interactive=can_restore_websites(),
+                visible=can_restore_websites(),
+            ),
         )
 
     matching_excluded_domain = next(
@@ -504,11 +531,18 @@ def restore_selected_website(selected_domain):
                 choices=excluded_site_domains,
                 value=None,
                 interactive=can_restore_websites(),
+                visible=can_restore_websites(),
             ),
             "That website is no longer in the excluded list.",
             gr.update(visible=False),
-            gr.update(interactive=can_restore_websites()),
-            gr.update(interactive=can_restore_websites()),
+            gr.update(
+                interactive=can_restore_websites(),
+                visible=can_restore_websites(),
+            ),
+            gr.update(
+                interactive=can_restore_websites(),
+                visible=can_restore_websites(),
+            ),
         )
 
     updated_domains = [
@@ -525,11 +559,18 @@ def restore_selected_website(selected_domain):
                 choices=excluded_site_domains,
                 value=selected_domain,
                 interactive=can_restore_websites(),
+                visible=can_restore_websites(),
             ),
             f"Could not save the restoration: {error}. The website remains excluded.",
             gr.update(visible=False),
-            gr.update(interactive=can_restore_websites()),
-            gr.update(interactive=can_restore_websites()),
+            gr.update(
+                interactive=can_restore_websites(),
+                visible=can_restore_websites(),
+            ),
+            gr.update(
+                interactive=can_restore_websites(),
+                visible=can_restore_websites(),
+            ),
         )
 
     excluded_site_domains[:] = updated_domains
@@ -539,11 +580,18 @@ def restore_selected_website(selected_domain):
             choices=excluded_site_domains,
             value=None,
             interactive=can_restore_websites(),
+            visible=can_restore_websites(),
         ),
         f"Restored `{matching_excluded_domain}`. It can be considered for future responses.",
         gr.update(visible=False),
-        gr.update(interactive=can_restore_websites()),
-        gr.update(interactive=can_restore_websites()),
+        gr.update(
+            interactive=can_restore_websites(),
+            visible=can_restore_websites(),
+        ),
+        gr.update(
+            interactive=can_restore_websites(),
+            visible=can_restore_websites(),
+        ),
     )
 
 
@@ -569,11 +617,16 @@ def restore_all_websites():
     if excluded_sites_load_error:
         return (
             format_excluded_sites(),
-            gr.update(choices=excluded_site_domains, value=None, interactive=False),
+            gr.update(
+                choices=excluded_site_domains,
+                value=None,
+                interactive=False,
+                visible=False,
+            ),
             "Saved website exclusions could not be read, so they were not restored.",
             gr.update(visible=False),
-            gr.update(interactive=False),
-            gr.update(interactive=False),
+            gr.update(interactive=False, visible=False),
+            gr.update(interactive=False, visible=False),
         )
 
     if not excluded_site_domains:
@@ -588,11 +641,18 @@ def restore_all_websites():
                     choices=excluded_site_domains,
                     value=None,
                     interactive=can_restore_websites(),
+                    visible=can_restore_websites(),
                 ),
                 f"Could not save the restoration: {error}. No websites were restored.",
                 gr.update(visible=False),
-                gr.update(interactive=can_restore_websites()),
-                gr.update(interactive=can_restore_websites()),
+                gr.update(
+                    interactive=can_restore_websites(),
+                    visible=can_restore_websites(),
+                ),
+                gr.update(
+                    interactive=can_restore_websites(),
+                    visible=can_restore_websites(),
+                ),
             )
 
         excluded_site_domains.clear()
@@ -604,11 +664,18 @@ def restore_all_websites():
             choices=excluded_site_domains,
             value=None,
             interactive=can_restore_websites(),
+            visible=can_restore_websites(),
         ),
         status_message,
         gr.update(visible=False),
-        gr.update(interactive=can_restore_websites()),
-        gr.update(interactive=can_restore_websites()),
+        gr.update(
+            interactive=can_restore_websites(),
+            visible=can_restore_websites(),
+        ),
+        gr.update(
+            interactive=can_restore_websites(),
+            visible=can_restore_websites(),
+        ),
     )
 
 
@@ -632,15 +699,6 @@ with gr.Blocks(title="AI Citation Verification Prototype") as demo:
             "file can be read, so saved exclusions are not ignored."
         )
 
-    # Show the questions currently available in the prepared dataset.
-    if prepared_examples:
-        example_question_list = "\n".join(
-            f"- {example['question']}" for example in prepared_examples
-        )
-        gr.Markdown(f"**Available example questions:**\n\n{example_question_list}")
-    else:
-        gr.Markdown("No prepared example questions are currently available.")
-
     # Keep the selected citation private to the current user's Gradio session.
     selected_citation_state = gr.State(value=None)
     feedback_state = gr.State(value={})
@@ -652,22 +710,54 @@ with gr.Blocks(title="AI Citation Verification Prototype") as demo:
         with gr.Column(scale=1):
             question_input = gr.Textbox(
                 label="Your question",
-                placeholder="Type a question...",
+                placeholder="Type a question or choose an example below...",
                 lines=2,
             )
-            submit_button = gr.Button("Submit Question", variant="primary")
-
-            # Keep the response area read-only and show its citation alongside it.
-            response_output = gr.Textbox(
-                label="Simulated AI response",
-                lines=8,
-                interactive=False,
+            submit_button = gr.Button(
+                "Submit Question",
+                variant="primary",
+                size="md",
             )
-            citation_output = gr.Markdown()
-            inspect_citation_button = gr.Button("Inspect Citation")
+            if prepared_examples:
+                gr.Examples(
+                    examples=[
+                        [example["question"]] for example in prepared_examples
+                    ],
+                    inputs=question_input,
+                    label="Click an example question to use it",
+                    example_labels=[
+                        example["question"] for example in prepared_examples
+                    ],
+                    examples_per_page=3,
+                )
+            else:
+                gr.Markdown("Prepared example questions are unavailable.")
+
+            # Use a compact response panel to distinguish the simulated answer.
+            with gr.Group():
+                gr.Markdown("### Simulated AI response")
+                response_output = gr.Textbox(
+                    label="Prepared response",
+                    placeholder="Submit a question to see a prepared response.",
+                    lines=4,
+                    interactive=False,
+                )
 
         with gr.Column(scale=1):
-            with gr.Column(visible=False) as evidence_panel:
+            with gr.Group():
+                gr.Markdown("### Citation inspection")
+                gr.Markdown(
+                    "Inspect the prepared citation and its simulated evidence."
+                )
+                citation_output = gr.Markdown()
+                inspect_citation_button = gr.Button(
+                    "Inspect Citation",
+                    variant="primary",
+                    size="md",
+                )
+
+            with gr.Group(visible=False) as evidence_panel:
+                gr.Markdown("### Source evidence (simulated)")
                 evidence_output = gr.Markdown()
                 gr.Markdown(
                     "**Does this citation support the information provided?**\n\n"
@@ -691,36 +781,40 @@ with gr.Blocks(title="AI Citation Verification Prototype") as demo:
                 hide_evidence_button = gr.Button("Hide Evidence")
 
     # Let users manage their locally saved website exclusions.
-    gr.Markdown("## Excluded Websites")
-    gr.Markdown(
-        "Exclusion is a user preference, not proof that a website is factually "
-        "unreliable."
-    )
-    excluded_sites_output = gr.Markdown(format_excluded_sites())
-    with gr.Row():
+    with gr.Group():
+        gr.Markdown("### Excluded Websites")
+        gr.Markdown(
+            "Manage saved website preferences here. Exclusion is not proof that a "
+            "website is factually unreliable."
+        )
+        excluded_sites_output = gr.Markdown(format_excluded_sites())
         restore_site_dropdown = gr.Dropdown(
             choices=excluded_site_domains,
-            label="Website to restore",
+            label="Select a website to restore",
             value=None,
             interactive=can_restore_websites(),
-        )
-        restore_selected_button = gr.Button(
-            "Restore Selected Website",
-            interactive=can_restore_websites(),
-        )
-        restore_all_button = gr.Button(
-            "Restore All Websites",
-            interactive=can_restore_websites(),
-        )
-    website_action_status = gr.Markdown()
-    with gr.Column(visible=False) as restore_all_confirmation_panel:
-        gr.Markdown(
-            "Are you sure you want to restore all excluded websites? "
-            "They may then be considered for future responses."
+            visible=can_restore_websites(),
         )
         with gr.Row():
-            confirm_restore_all_button = gr.Button("Confirm Restore All")
-            cancel_restore_all_button = gr.Button("Cancel")
+            restore_selected_button = gr.Button(
+                "Restore Selected Website",
+                interactive=can_restore_websites(),
+                visible=can_restore_websites(),
+            )
+            restore_all_button = gr.Button(
+                "Restore All Websites",
+                interactive=can_restore_websites(),
+                visible=can_restore_websites(),
+            )
+        with gr.Column(visible=False) as restore_all_confirmation_panel:
+            gr.Markdown(
+                "Are you sure you want to restore all excluded websites? "
+                "They may then be considered for future responses."
+            )
+            with gr.Row():
+                confirm_restore_all_button = gr.Button("Confirm Restore All")
+                cancel_restore_all_button = gr.Button("Cancel")
+        website_action_status = gr.Markdown()
 
     # The button and Enter key use the same function and clear stale evidence.
     question_outputs = [
