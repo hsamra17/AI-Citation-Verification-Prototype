@@ -4,34 +4,96 @@ from pathlib import Path
 import gradio as gr
 
 
-# Load prepared responses from the JSON file next to this Python file.
+# Keep both JSON paths beside this Python file so the app works from any folder.
 responses_file_path = Path(__file__).parent / "responses.json"
-with responses_file_path.open(encoding="utf-8") as responses_file:
-    response_dataset = json.load(responses_file)
 
-prepared_examples = response_dataset["examples"]
 
-# Create the local exclusion list on first run, then load saved domains.
 excluded_sites_file_path = Path(__file__).parent / "excluded_sites.json"
-if not excluded_sites_file_path.exists():
-    excluded_sites_file_path.write_text("[]\n", encoding="utf-8")
 
-with excluded_sites_file_path.open(encoding="utf-8") as excluded_sites_file:
-    saved_excluded_domains = json.load(excluded_sites_file)
 
-if not isinstance(saved_excluded_domains, list):
-    raise ValueError("excluded_sites.json must contain a JSON list of website domains.")
+def normalize_domain(domain):
+    """Compare website domains without being affected by letter case or a final dot."""
+    return domain.strip().rstrip(".").casefold()
 
-excluded_site_domains = []
-for saved_domain in saved_excluded_domains:
-    if not isinstance(saved_domain, str) or not saved_domain.strip().rstrip("."):
-        raise ValueError("Each excluded website domain must be a non-empty string.")
-    cleaned_domain = saved_domain.strip().rstrip(".")
-    if not any(
-        existing_domain.rstrip(".").casefold() == cleaned_domain.casefold()
-        for existing_domain in excluded_site_domains
-    ):
-        excluded_site_domains.append(cleaned_domain)
+
+def load_prepared_examples():
+    """Load and check the response dataset without stopping the interface on errors."""
+    try:
+        with responses_file_path.open(encoding="utf-8") as responses_file:
+            response_dataset = json.load(responses_file)
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        return [], f"Could not load responses.json: {error}"
+
+    if not isinstance(response_dataset, dict):
+        return [], "responses.json must contain an object with an examples list."
+
+    examples = response_dataset.get("examples")
+    if not isinstance(examples, list):
+        return [], "responses.json must contain an examples list."
+
+    for example_number, example in enumerate(examples, start=1):
+        if (
+            not isinstance(example, dict)
+            or not isinstance(example.get("question"), str)
+            or not example["question"].strip()
+            or not isinstance(example.get("simulated_answer"), str)
+            or not example["simulated_answer"].strip()
+            or not isinstance(example.get("citations"), list)
+        ):
+            return [], f"responses.json example {example_number} has invalid fields."
+
+        for citation in example["citations"]:
+            citation_fields = (
+                "citation_id",
+                "source_title",
+                "website_domain",
+                "evidence_preview",
+            )
+            if not isinstance(citation, dict) or any(
+                not isinstance(citation.get(field), str)
+                or not citation[field].strip()
+                for field in citation_fields
+            ):
+                return [], f"responses.json example {example_number} has an invalid citation."
+
+    return examples, ""
+
+
+def load_excluded_site_domains():
+    """Create the exclusions file if missing, then safely load its domain list."""
+    try:
+        # Exclusive creation avoids replacing a file another process created meanwhile.
+        try:
+            with excluded_sites_file_path.open("x", encoding="utf-8") as new_file:
+                new_file.write("[]\n")
+        except FileExistsError:
+            pass
+
+        with excluded_sites_file_path.open(encoding="utf-8") as excluded_sites_file:
+            saved_domains = json.load(excluded_sites_file)
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        return [], f"Could not load excluded_sites.json: {error}"
+
+    if not isinstance(saved_domains, list):
+        return [], "excluded_sites.json must contain a JSON list of website domains."
+
+    loaded_domains = []
+    for saved_domain in saved_domains:
+        if not isinstance(saved_domain, str) or not normalize_domain(saved_domain):
+            return [], "Each excluded website domain must be a non-empty string."
+
+        cleaned_domain = saved_domain.strip().rstrip(".")
+        if not any(
+            normalize_domain(existing_domain) == normalize_domain(cleaned_domain)
+            for existing_domain in loaded_domains
+        ):
+            loaded_domains.append(cleaned_domain)
+
+    return loaded_domains, ""
+
+
+prepared_examples, responses_load_error = load_prepared_examples()
+excluded_site_domains, excluded_sites_load_error = load_excluded_site_domains()
 
 feedback_messages = {
     "Yes": "Feedback recorded: You believe this citation supports the response.",
@@ -45,21 +107,55 @@ def normalize_question_text(question):
     return " ".join(question.split()).casefold().rstrip(" ?")
 
 
+def is_valid_selected_citation(selected_citation, current_question=None):
+    """Confirm state refers to a real, eligible citation for the current question."""
+    if (
+        responses_load_error
+        or excluded_sites_load_error
+        or not isinstance(selected_citation, dict)
+    ):
+        return False
+
+    website_domain = selected_citation.get("website_domain")
+    if not isinstance(website_domain, str):
+        return False
+    if normalize_domain(website_domain) in {
+        normalize_domain(domain) for domain in excluded_site_domains
+    }:
+        return False
+
+    for example in prepared_examples:
+        if current_question is not None and normalize_question_text(
+            example["question"]
+        ) != normalize_question_text(current_question):
+            continue
+        if selected_citation in example["citations"]:
+            return True
+
+    return False
+
+
 def normalize_domain(domain):
     """Compare website domains without being affected by letter case or a final dot."""
     return domain.strip().rstrip(".").casefold()
 
 
-def save_excluded_site_domains():
-    """Persist the current website exclusions as a JSON list."""
-    excluded_sites_file_path.write_text(
-        json.dumps(excluded_site_domains, indent=2) + "\n",
+def save_excluded_site_domains(domains_to_save):
+    """Write changes separately before replacing the saved preference file."""
+    temporary_file_path = excluded_sites_file_path.with_name(
+        excluded_sites_file_path.name + ".tmp"
+    )
+    temporary_file_path.write_text(
+        json.dumps(domains_to_save, indent=2) + "\n",
         encoding="utf-8",
     )
+    temporary_file_path.replace(excluded_sites_file_path)
 
 
 def format_excluded_sites():
     """Build the text shown in the website management section."""
+    if excluded_sites_load_error:
+        return f"Saved exclusions are unavailable: {excluded_sites_load_error}"
     if not excluded_site_domains:
         return "No websites are currently excluded."
 
@@ -67,6 +163,11 @@ def format_excluded_sites():
         f"- `{domain}`" for domain in excluded_site_domains
     )
     return f"Currently excluded domains:\n\n{excluded_domain_list}"
+
+
+def can_restore_websites():
+    """Only enable restoration controls when saved exclusions are readable and present."""
+    return bool(excluded_site_domains) and not excluded_sites_load_error
 
 
 def reset_question_outputs(message, question):
@@ -91,6 +192,12 @@ def process_question(question):
     if not question or not question.strip():
         return reset_question_outputs("Please enter a question.", question)
 
+    if responses_load_error:
+        return reset_question_outputs(
+            f"Prepared responses are unavailable: {responses_load_error}",
+            question,
+        )
+
     normalized_user_question = normalize_question_text(question)
     excluded_domains = {
         normalize_domain(domain) for domain in excluded_site_domains
@@ -99,6 +206,13 @@ def process_question(question):
     for example in prepared_examples:
         normalized_prepared_question = normalize_question_text(example["question"])
         if normalized_user_question == normalized_prepared_question:
+            if excluded_sites_load_error:
+                return reset_question_outputs(
+                    "A response cannot be selected because saved website exclusions "
+                    f"could not be loaded: {excluded_sites_load_error}",
+                    question,
+                )
+
             eligible_citations = [
                 citation
                 for citation in example["citations"]
@@ -140,15 +254,15 @@ def process_question(question):
             )
 
     return reset_question_outputs(
-        "That question is not recognised yet. Please try one of the three "
-        "example questions listed above.",
+        "This prototype only supports its prepared example questions. Please try "
+        "one of the three questions listed above.",
         question,
     )
 
 
-def inspect_citation(selected_citation, feedback_records):
+def inspect_citation(selected_citation, feedback_records, current_question):
     """Show citation evidence and any feedback already recorded for it."""
-    if not selected_citation:
+    if not is_valid_selected_citation(selected_citation, current_question):
         return "", "", gr.update(visible=False)
 
     evidence_details = (
@@ -164,9 +278,14 @@ def inspect_citation(selected_citation, feedback_records):
     return evidence_details, previous_feedback_message, gr.update(visible=True)
 
 
-def save_feedback(feedback_choice, selected_citation, feedback_records):
+def save_feedback(
+    feedback_choice,
+    selected_citation,
+    feedback_records,
+    current_question,
+):
     """Save feedback by citation ID and show exclusion controls only after No."""
-    if not selected_citation:
+    if not is_valid_selected_citation(selected_citation, current_question):
         return (
             "",
             feedback_records or {},
@@ -207,16 +326,21 @@ def save_feedback(feedback_choice, selected_citation, feedback_records):
     )
 
 
-def record_yes_feedback(selected_citation, feedback_records):
-    return save_feedback("Yes", selected_citation, feedback_records)
+def record_yes_feedback(selected_citation, feedback_records, current_question):
+    return save_feedback("Yes", selected_citation, feedback_records, current_question)
 
 
-def record_no_feedback(selected_citation, feedback_records):
-    return save_feedback("No", selected_citation, feedback_records)
+def record_no_feedback(selected_citation, feedback_records, current_question):
+    return save_feedback("No", selected_citation, feedback_records, current_question)
 
 
-def record_unsure_feedback(selected_citation, feedback_records):
-    return save_feedback("Unsure", selected_citation, feedback_records)
+def record_unsure_feedback(selected_citation, feedback_records, current_question):
+    return save_feedback(
+        "Unsure",
+        selected_citation,
+        feedback_records,
+        current_question,
+    )
 
 
 def hide_evidence_preview():
@@ -269,15 +393,40 @@ def refresh_question_after_exclusion(question, status_message):
         current_question,
         status_message,
         format_excluded_sites(),
-        gr.update(choices=excluded_site_domains, value=None),
+        gr.update(
+            choices=excluded_site_domains,
+            value=None,
+            interactive=can_restore_websites(),
+        ),
+        gr.update(interactive=can_restore_websites()),
+        gr.update(interactive=can_restore_websites()),
         gr.update(visible=False),
     )
 
 
-def exclude_website(pending_exclusion_domain, current_question):
+def exclude_website(
+    pending_exclusion_domain,
+    current_question,
+    selected_citation,
+):
     """Save an explicitly requested exclusion, then recheck the current response."""
-    if not pending_exclusion_domain:
-        message = "Inspect a citation and select No before excluding a website."
+    if excluded_sites_load_error:
+        message = (
+            "The website preference file could not be read, so no exclusion was "
+            "saved. Fix excluded_sites.json before trying again."
+        )
+        return refresh_question_after_exclusion(current_question, message)
+
+    if (
+        not pending_exclusion_domain
+        or not is_valid_selected_citation(selected_citation, current_question)
+        or normalize_domain(pending_exclusion_domain)
+        != normalize_domain(selected_citation["website_domain"])
+    ):
+        message = (
+            "The selected citation is no longer current. Submit the question and "
+            "inspect its citation again before excluding a website."
+        )
         return refresh_question_after_exclusion(current_question, message)
 
     matching_excluded_domain = next(
@@ -289,8 +438,17 @@ def exclude_website(pending_exclusion_domain, current_question):
         None,
     )
     if matching_excluded_domain is None:
-        excluded_site_domains.append(pending_exclusion_domain)
-        save_excluded_site_domains()
+        updated_domains = excluded_site_domains + [pending_exclusion_domain]
+        try:
+            save_excluded_site_domains(updated_domains)
+        except (OSError, UnicodeError) as error:
+            status_message = (
+                f"Could not save the exclusion: {error}. The website was not "
+                "excluded."
+            )
+            return refresh_question_after_exclusion(current_question, status_message)
+
+        excluded_site_domains[:] = updated_domains
         status_message = (
             f"Excluded `{pending_exclusion_domain}` from future responses. This is "
             "your preference, not proof that the website is factually unreliable."
@@ -303,12 +461,32 @@ def exclude_website(pending_exclusion_domain, current_question):
 
 def restore_selected_website(selected_domain):
     """Restore one website selected from the excluded-domain list."""
+    if excluded_sites_load_error:
+        return (
+            format_excluded_sites(),
+            gr.update(
+                choices=excluded_site_domains,
+                value=selected_domain,
+                interactive=False,
+            ),
+            "The saved exclusions could not be read, so no website was restored.",
+            gr.update(visible=False),
+            gr.update(interactive=False),
+            gr.update(interactive=False),
+        )
+
     if not selected_domain:
         return (
             format_excluded_sites(),
-            gr.update(choices=excluded_site_domains, value=None),
+            gr.update(
+                choices=excluded_site_domains,
+                value=None,
+                interactive=can_restore_websites(),
+            ),
             "Select an excluded website to restore.",
             gr.update(visible=False),
+            gr.update(interactive=can_restore_websites()),
+            gr.update(interactive=can_restore_websites()),
         )
 
     matching_excluded_domain = next(
@@ -322,23 +500,60 @@ def restore_selected_website(selected_domain):
     if matching_excluded_domain is None:
         return (
             format_excluded_sites(),
-            gr.update(choices=excluded_site_domains, value=None),
+            gr.update(
+                choices=excluded_site_domains,
+                value=None,
+                interactive=can_restore_websites(),
+            ),
             "That website is no longer in the excluded list.",
             gr.update(visible=False),
+            gr.update(interactive=can_restore_websites()),
+            gr.update(interactive=can_restore_websites()),
         )
 
-    excluded_site_domains.remove(matching_excluded_domain)
-    save_excluded_site_domains()
+    updated_domains = [
+        domain
+        for domain in excluded_site_domains
+        if normalize_domain(domain) != normalize_domain(matching_excluded_domain)
+    ]
+    try:
+        save_excluded_site_domains(updated_domains)
+    except (OSError, UnicodeError) as error:
+        return (
+            format_excluded_sites(),
+            gr.update(
+                choices=excluded_site_domains,
+                value=selected_domain,
+                interactive=can_restore_websites(),
+            ),
+            f"Could not save the restoration: {error}. The website remains excluded.",
+            gr.update(visible=False),
+            gr.update(interactive=can_restore_websites()),
+            gr.update(interactive=can_restore_websites()),
+        )
+
+    excluded_site_domains[:] = updated_domains
     return (
         format_excluded_sites(),
-        gr.update(choices=excluded_site_domains, value=None),
+        gr.update(
+            choices=excluded_site_domains,
+            value=None,
+            interactive=can_restore_websites(),
+        ),
         f"Restored `{matching_excluded_domain}`. It can be considered for future responses.",
         gr.update(visible=False),
+        gr.update(interactive=can_restore_websites()),
+        gr.update(interactive=can_restore_websites()),
     )
 
 
 def request_restore_all_confirmation():
     """Ask for confirmation before restoring every excluded website."""
+    if excluded_sites_load_error:
+        return (
+            gr.update(visible=False),
+            "Saved website exclusions could not be read, so they cannot be restored.",
+        )
     if not excluded_site_domains:
         return gr.update(visible=False), "There are no excluded websites to restore."
     return gr.update(visible=True), ""
@@ -351,18 +566,49 @@ def cancel_restore_all():
 
 def restore_all_websites():
     """Restore all excluded websites after the user confirms the action."""
+    if excluded_sites_load_error:
+        return (
+            format_excluded_sites(),
+            gr.update(choices=excluded_site_domains, value=None, interactive=False),
+            "Saved website exclusions could not be read, so they were not restored.",
+            gr.update(visible=False),
+            gr.update(interactive=False),
+            gr.update(interactive=False),
+        )
+
     if not excluded_site_domains:
         status_message = "There are no excluded websites to restore."
     else:
+        try:
+            save_excluded_site_domains([])
+        except (OSError, UnicodeError) as error:
+            return (
+                format_excluded_sites(),
+                gr.update(
+                    choices=excluded_site_domains,
+                    value=None,
+                    interactive=can_restore_websites(),
+                ),
+                f"Could not save the restoration: {error}. No websites were restored.",
+                gr.update(visible=False),
+                gr.update(interactive=can_restore_websites()),
+                gr.update(interactive=can_restore_websites()),
+            )
+
         excluded_site_domains.clear()
-        save_excluded_site_domains()
         status_message = "All excluded websites have been restored."
 
     return (
         format_excluded_sites(),
-        gr.update(choices=excluded_site_domains, value=None),
+        gr.update(
+            choices=excluded_site_domains,
+            value=None,
+            interactive=can_restore_websites(),
+        ),
         status_message,
         gr.update(visible=False),
+        gr.update(interactive=can_restore_websites()),
+        gr.update(interactive=can_restore_websites()),
     )
 
 
@@ -377,12 +623,23 @@ with gr.Blocks(title="AI Citation Verification Prototype") as demo:
         "**Notice:** Responses in this prototype are simulated and are not "
         "generated by a live AI model."
     )
+    if responses_load_error:
+        gr.Markdown(f"**Dataset loading error:** {responses_load_error}")
+    if excluded_sites_load_error:
+        gr.Markdown(
+            "**Website preference loading error:** "
+            f"{excluded_sites_load_error} Prepared responses are paused until this "
+            "file can be read, so saved exclusions are not ignored."
+        )
 
     # Show the questions currently available in the prepared dataset.
-    example_question_list = "\n".join(
-        f"- {example['question']}" for example in prepared_examples
-    )
-    gr.Markdown(f"**Available example questions:**\n\n{example_question_list}")
+    if prepared_examples:
+        example_question_list = "\n".join(
+            f"- {example['question']}" for example in prepared_examples
+        )
+        gr.Markdown(f"**Available example questions:**\n\n{example_question_list}")
+    else:
+        gr.Markdown("No prepared example questions are currently available.")
 
     # Keep the selected citation private to the current user's Gradio session.
     selected_citation_state = gr.State(value=None)
@@ -425,7 +682,11 @@ with gr.Blocks(title="AI Citation Verification Prototype") as demo:
                 with gr.Column(visible=False) as exclusion_controls:
                     exclusion_prompt_output = gr.Markdown()
                     with gr.Row():
-                        exclude_website_button = gr.Button("Exclude Website")
+                        exclude_website_button = gr.Button(
+                            "Exclude Website",
+                            interactive=not responses_load_error
+                            and not excluded_sites_load_error,
+                        )
                         keep_website_button = gr.Button("Keep Website")
                 hide_evidence_button = gr.Button("Hide Evidence")
 
@@ -441,9 +702,16 @@ with gr.Blocks(title="AI Citation Verification Prototype") as demo:
             choices=excluded_site_domains,
             label="Website to restore",
             value=None,
+            interactive=can_restore_websites(),
         )
-        restore_selected_button = gr.Button("Restore Selected Website")
-        restore_all_button = gr.Button("Restore All Websites")
+        restore_selected_button = gr.Button(
+            "Restore Selected Website",
+            interactive=can_restore_websites(),
+        )
+        restore_all_button = gr.Button(
+            "Restore All Websites",
+            interactive=can_restore_websites(),
+        )
     website_action_status = gr.Markdown()
     with gr.Column(visible=False) as restore_all_confirmation_panel:
         gr.Markdown(
@@ -482,12 +750,12 @@ with gr.Blocks(title="AI Citation Verification Prototype") as demo:
     # Inspect the current citation or hide its evidence without losing the selection.
     inspect_citation_button.click(
         fn=inspect_citation,
-        inputs=[selected_citation_state, feedback_state],
+        inputs=[selected_citation_state, feedback_state, current_question_state],
         outputs=[evidence_output, feedback_output, evidence_panel],
     )
     yes_feedback_button.click(
         fn=record_yes_feedback,
-        inputs=[selected_citation_state, feedback_state],
+        inputs=[selected_citation_state, feedback_state, current_question_state],
         outputs=[
             feedback_output,
             feedback_state,
@@ -499,7 +767,7 @@ with gr.Blocks(title="AI Citation Verification Prototype") as demo:
     )
     no_feedback_button.click(
         fn=record_no_feedback,
-        inputs=[selected_citation_state, feedback_state],
+        inputs=[selected_citation_state, feedback_state, current_question_state],
         outputs=[
             feedback_output,
             feedback_state,
@@ -511,7 +779,7 @@ with gr.Blocks(title="AI Citation Verification Prototype") as demo:
     )
     unsure_feedback_button.click(
         fn=record_unsure_feedback,
-        inputs=[selected_citation_state, feedback_state],
+        inputs=[selected_citation_state, feedback_state, current_question_state],
         outputs=[
             feedback_output,
             feedback_state,
@@ -527,11 +795,17 @@ with gr.Blocks(title="AI Citation Verification Prototype") as demo:
     )
     exclude_website_button.click(
         fn=exclude_website,
-        inputs=[pending_exclusion_domain_state, current_question_state],
+        inputs=[
+            pending_exclusion_domain_state,
+            current_question_state,
+            selected_citation_state,
+        ],
         outputs=question_outputs
         + [
             excluded_sites_output,
             restore_site_dropdown,
+            restore_selected_button,
+            restore_all_button,
             restore_all_confirmation_panel,
         ],
     )
@@ -552,6 +826,8 @@ with gr.Blocks(title="AI Citation Verification Prototype") as demo:
             restore_site_dropdown,
             website_action_status,
             restore_all_confirmation_panel,
+            restore_selected_button,
+            restore_all_button,
         ],
     )
     restore_all_button.click(
@@ -565,6 +841,8 @@ with gr.Blocks(title="AI Citation Verification Prototype") as demo:
             restore_site_dropdown,
             website_action_status,
             restore_all_confirmation_panel,
+            restore_selected_button,
+            restore_all_button,
         ],
     )
     cancel_restore_all_button.click(
