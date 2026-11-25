@@ -1,17 +1,17 @@
 {
-  "dataset_note": "All examples, source titles, domains, and URLs are simulated teaching material, not real publications or working sources. The .test domains are reserved for testing.",
+  "dataset_note": "These educational examples use simulated responses that may contain inaccurate claims and are not factual advice. Citation records link to genuine sources; evidence previews are prepared summaries, not direct quotations. This prototype does not use a live AI model, live web retrieval, or automatic fact-checking.",
   "examples": [
     {
       "id": "example_1",
       "question": "Does regular exercise improve sleep quality?",
-      "simulated_answer": "Regular exercise can improve sleep quality in many adults.",
+      "simulated_answer": "Regular exercise can improve sleep quality in people with insomnia.",
       "citations": [
         {
           "citation_id": "citation_1",
-          "source_title": "Simulated teaching source: Physical activity and adult sleep",
-          "website_domain": "sleep-evidence.test",
-          "source_url": "https://sleep-evidence.test/illustrative/physical-activity-and-sleep",
-          "evidence_preview": "Regular physical activity is associated with improved sleep quality in adults."
+          "source_title": "Exercise can improve sleep quality: a systematic review and meta-analysis",
+          "website_domain": "pubmed.ncbi.nlm.nih.gov",
+          "source_url": "https://pubmed.ncbi.nlm.nih.gov/30018855/",
+          "evidence_preview": "A systematic review of nine studies involving 557 participants found improvements in reported sleep quality following exercise interventions, although the quality of the evidence was limited."
         }
       ],
       "expected_evidence_classification": "supported"
@@ -23,10 +23,10 @@
       "citations": [
         {
           "citation_id": "citation_2",
-          "source_title": "Simulated teaching source: Caffeine, alertness, and memory",
-          "website_domain": "caffeine-evidence.test",
-          "source_url": "https://caffeine-evidence.test/illustrative/caffeine-and-memory",
-          "evidence_preview": "Caffeine may temporarily improve alertness and attention, but this does not establish permanent memory improvement."
+          "source_title": "EFSA explains risk assessment: Caffeine",
+          "website_domain": "efsa.europa.eu",
+          "source_url": "https://www.efsa.europa.eu/en/corporate/pub/efsaexplainscaffeine150527",
+          "evidence_preview": "Caffeine stimulates the central nervous system. Moderate doses can increase alertness and reduce sleepiness."
         }
       ],
       "expected_evidence_classification": "unsupported"
@@ -38,10 +38,10 @@
       "citations": [
         {
           "citation_id": "citation_3",
-          "source_title": "Simulated teaching source: Houseplants and indoor air quality",
-          "website_domain": "indoor-air-evidence.test",
-          "source_url": "https://indoor-air-evidence.test/illustrative/houseplants-and-indoor-air",
-          "evidence_preview": "Laboratory studies suggest that some plants can absorb pollutants, but their effectiveness in typical homes remains uncertain."
+          "source_title": "Investigation of simultaneous volatile organic compound removal by indoor plants using solid phase microextraction-gas chromatography-mass spectrometry",
+          "website_domain": "pubs.rsc.org",
+          "source_url": "https://pubs.rsc.org/en/content/articlehtml/2023/ra/d3ra04015a",
+          "evidence_preview": "Researchers used a sealed experimental chamber to investigate the removal of eight volatile organic compounds by five species of houseplants."
         }
       ],
       "expected_evidence_classification": "insufficient"
