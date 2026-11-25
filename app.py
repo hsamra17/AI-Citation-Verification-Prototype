@@ -11,6 +11,12 @@ with responses_file_path.open(encoding="utf-8") as responses_file:
 
 prepared_examples = response_dataset["examples"]
 
+feedback_messages = {
+    "Yes": "Feedback recorded: You believe this citation supports the response.",
+    "No": "Feedback recorded: You believe this citation does not support the response.",
+    "Unsure": "Feedback recorded: You are unsure whether this citation supports the response.",
+}
+
 
 def normalize_question_text(question):
     """Make questions comparable despite letter case, spacing, or trailing question marks."""
@@ -24,6 +30,7 @@ def process_question(question):
             "Please enter a question.",
             "",
             None,
+            "",
             "",
             gr.update(visible=False),
         )
@@ -43,6 +50,7 @@ def process_question(question):
                 citation_summary,
                 selected_citation,
                 "",
+                "",
                 gr.update(visible=False),
             )
 
@@ -52,14 +60,15 @@ def process_question(question):
         "",
         None,
         "",
+        "",
         gr.update(visible=False),
     )
 
 
-def inspect_citation(selected_citation):
-    """Show the selected citation's simulated source details and evidence."""
+def inspect_citation(selected_citation, feedback_records):
+    """Show citation evidence and any feedback already recorded for it."""
     if not selected_citation:
-        return "", gr.update(visible=False)
+        return "", "", gr.update(visible=False)
 
     evidence_details = (
         "### Evidence preview\n\n"
@@ -68,7 +77,33 @@ def inspect_citation(selected_citation):
         f"**Website domain:** `{selected_citation['website_domain']}`\n\n"
         f"**Evidence preview:** {selected_citation['evidence_preview']}"
     )
-    return evidence_details, gr.update(visible=True)
+    citation_id = selected_citation["citation_id"]
+    previous_choice = (feedback_records or {}).get(citation_id)
+    previous_feedback_message = feedback_messages.get(previous_choice, "")
+    return evidence_details, previous_feedback_message, gr.update(visible=True)
+
+
+def save_feedback(feedback_choice, selected_citation, feedback_records):
+    """Save a user's judgement in session state under the current citation ID."""
+    if not selected_citation:
+        return "", feedback_records or {}
+
+    updated_feedback_records = dict(feedback_records or {})
+    citation_id = selected_citation["citation_id"]
+    updated_feedback_records[citation_id] = feedback_choice
+    return feedback_messages[feedback_choice], updated_feedback_records
+
+
+def record_yes_feedback(selected_citation, feedback_records):
+    return save_feedback("Yes", selected_citation, feedback_records)
+
+
+def record_no_feedback(selected_citation, feedback_records):
+    return save_feedback("No", selected_citation, feedback_records)
+
+
+def record_unsure_feedback(selected_citation, feedback_records):
+    return save_feedback("Unsure", selected_citation, feedback_records)
 
 
 def hide_evidence_preview():
@@ -96,6 +131,7 @@ with gr.Blocks(title="AI Citation Verification Prototype") as demo:
 
     # Keep the selected citation private to the current user's Gradio session.
     selected_citation_state = gr.State(value=None)
+    feedback_state = gr.State(value={})
 
     # Place question entry and its response beside the citation evidence panel.
     with gr.Row():
@@ -119,6 +155,16 @@ with gr.Blocks(title="AI Citation Verification Prototype") as demo:
         with gr.Column(scale=1):
             with gr.Column(visible=False) as evidence_panel:
                 evidence_output = gr.Markdown()
+                gr.Markdown(
+                    "**Does this citation support the information provided?**\n\n"
+                    "Your feedback represents your judgement; it is not an "
+                    "automated verification of factual accuracy."
+                )
+                with gr.Row():
+                    yes_feedback_button = gr.Button("Yes")
+                    no_feedback_button = gr.Button("No")
+                    unsure_feedback_button = gr.Button("Unsure")
+                feedback_output = gr.Markdown()
                 hide_evidence_button = gr.Button("Hide Evidence")
 
     # The button and Enter key use the same function and clear stale evidence.
@@ -127,6 +173,7 @@ with gr.Blocks(title="AI Citation Verification Prototype") as demo:
         citation_output,
         selected_citation_state,
         evidence_output,
+        feedback_output,
         evidence_panel,
     ]
     submit_button.click(
@@ -143,8 +190,23 @@ with gr.Blocks(title="AI Citation Verification Prototype") as demo:
     # Inspect the current citation or hide its evidence without losing the selection.
     inspect_citation_button.click(
         fn=inspect_citation,
-        inputs=selected_citation_state,
-        outputs=[evidence_output, evidence_panel],
+        inputs=[selected_citation_state, feedback_state],
+        outputs=[evidence_output, feedback_output, evidence_panel],
+    )
+    yes_feedback_button.click(
+        fn=record_yes_feedback,
+        inputs=[selected_citation_state, feedback_state],
+        outputs=[feedback_output, feedback_state],
+    )
+    no_feedback_button.click(
+        fn=record_no_feedback,
+        inputs=[selected_citation_state, feedback_state],
+        outputs=[feedback_output, feedback_state],
+    )
+    unsure_feedback_button.click(
+        fn=record_unsure_feedback,
+        inputs=[selected_citation_state, feedback_state],
+        outputs=[feedback_output, feedback_state],
     )
     hide_evidence_button.click(
         fn=hide_evidence_preview,
